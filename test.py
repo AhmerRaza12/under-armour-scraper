@@ -1,4 +1,5 @@
 import base64
+import json
 import time
 from dotenv import load_dotenv
 import requests
@@ -32,10 +33,10 @@ AIRTABLE_API_KEY= os.getenv("AIRTABLE_TOKEN")
 IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
 at = airtable.Airtable(AIRTABLE_BASE_ID, AIRTABLE_API_KEY)
 
-
-
-
-
+# Initialize data lists
+Products_tab_data = []
+SKUS_tab_data = []
+Imported_reviews_tab_data = []
 
 chrome_options = Options()
 chrome_options.add_argument('--no-sandbox')
@@ -43,13 +44,16 @@ chrome_options.add_argument('--disable-dev-shm-usage')
 chrome_options.add_argument('--start-maximized')
 chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36')
 chrome_options.add_argument('--ignore-certificate-errors')
+chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+chrome_options.add_argument('--headless=new')
+chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
 # chrome_options.add_argument(f'--proxy-server={proxy_ip}')
 # chrome_options.add_argument('--window-size=1920,1080')
 # chrome_options.add_argument("--headless=new")
 chrome_install = ChromeDriverManager().install()
 folder = os.path.dirname(chrome_install)
 chromedriver_path = os.path.join(folder, "chromedriver.exe")
-service = ChromeService(chromedriver_path)
+service = ChromeService(executable_path=chromedriver_path, log_path='NUL')
 
 
 
@@ -57,8 +61,8 @@ driver = webdriver.Chrome(service=service, options=chrome_options)
 
 
 
+
 def upload_image_to_imgbb(image_path):
-    # we need to upload payload' image as base64 string
     with open(image_path, "rb") as image_file:
         image_base64 = base64.b64encode(image_file.read()).decode("utf-8")
     url = "https://api.imgbb.com/1/upload"
@@ -105,7 +109,7 @@ def get_links():
                 else:
                     break
             except NoSuchElementException:
-                break  # No Next button means last page
+                break  
             except Exception as e:
                 print("Error clicking next:", e)
                 break
@@ -117,20 +121,40 @@ def get_links():
     return links
  
 def scrape_data(links):
-    for link in links[2:4]:
+    for link in links:
         driver.get(link)
         time.sleep(5)
+
         try:
-            SKUS_data=get_SKUS_data(driver)
-            Products_data=get_product_data(driver)
-            Imported_reviews_data=get_imported_reviews(driver)
+            # Extract and upload SKUs first
+            skus_data = get_SKUS_data(driver)
+            sku_record_ids = []
+            if skus_data:
+                for sku in skus_data:
+                    created_sku = at.create("SKUs", sku)
+                    sku_record_id = created_sku["id"]
+                    sku_record_ids.append(sku_record_id)
+                    print(f"[✔] Created SKU: {sku.get('Name')} → ID: {sku_record_id}")
+            else:
+                print("[⚠] No SKUs data found")
+
+            # Extract and upload Product data with SKU references
+            product_data = get_product_data(driver, sku_record_ids)
+            created_product = at.create("Products", product_data)
+            product_record_id = created_product["id"]
+            print(f"[✔] Created Product: {product_data.get('Name')} → ID: {product_record_id}")
+
+            # Extract and upload Reviews with linked Product ID
+            imported_reviews_data = get_imported_reviews(driver, product_record_id)
+            for review in imported_reviews_data:
+                at.create("Imported Reviews", review)
+
         except Exception as e:
-            print(f"Error scraping {link}: {e}")
+            print(f"[✘] Error processing {link}: {e}")
             continue
-    return SKUS_data,Products_data,Imported_reviews_data
 
 
-def get_product_data(driver):
+def get_product_data(driver, sku_record_ids):
     time.sleep(2)
     
     try:
@@ -147,10 +171,36 @@ def get_product_data(driver):
     except:
         product_name =""
     try:
-        filter_categories_list = driver.find_elements(By.XPATH, "//nav[@aria-label='Breadcrumb']//a")
-        filter_categories = ", ".join([filter_category.text.strip() for filter_category in filter_categories_list])
+        breadcrumb_elements = driver.find_elements(By.XPATH, "//nav[@aria-label='Breadcrumb']//a")
+        breadcrumb_texts = [el.text.strip() for el in breadcrumb_elements]
     except:
-        filter_categories = ""
+        breadcrumb_texts = []
+    category_keywords = {
+    "men": "Men's Shoes",
+    "women": "Women's Shoes",
+    "unisex": "Unisex Shoes"
+    }
+    matched_categories = set()
+    for text in breadcrumb_texts:
+        lowered = text.lower()
+        for keyword, category in category_keywords.items():
+            if keyword in lowered:
+                matched_categories.add(category)
+    filter_category_ids = []
+    for category in matched_categories:
+        try:
+        # Escape single quote for Airtable formula by using double quotes
+            escaped_value = category.replace('"', '\\"')
+            formula = f'{{Name}} = "{escaped_value}"'
+            print(f"[ℹ] Fetching category '{category}' with formula: {formula}")
+            result = at.get("Services & Collections", filter_by_formula=formula)
+            if result["records"]:
+                filter_category_ids.append(result["records"][0]["id"])
+        except Exception as e:
+            print(f"[⚠] Error fetching category '{category}': {e}")
+            continue
+   
+
     try:
         product_source_url = driver.current_url
     except:
@@ -221,6 +271,7 @@ def get_product_data(driver):
         model_name = ""
     try:
         color_name = driver.find_element(By.XPATH, "//legend//span[@aria-hidden='true']").text.strip()
+        color_name = color_name.split(" - ")[0]
     except:
         color_name = ""
     try:
@@ -247,43 +298,32 @@ def get_product_data(driver):
         percent_discount = driver.find_element(By.XPATH, "//div[contains(@class,'PriceDisplay_alternative-sale-text__9WawT')]").text.strip()
     except:
         percent_discount ="0%"
-    
-    
-    size_chart_popup = driver.find_element(By.XPATH, "//button[.='Size & Fit Guide']")
-    driver.execute_script("arguments[0].scrollIntoView(true);", size_chart_popup)
-    time.sleep(1)
-    driver.execute_script("window.scrollBy(0, -200);")
-    time.sleep(1)
-    size_chart_popup.click()
-    time.sleep(1)
     try:
-        size_chart_table = driver.find_element(By.XPATH, "(//div[@class='SizeChartModal_table-wrapper__8zKIq']//table)[1]")
-        driver.execute_script("arguments[0].scrollIntoView(true);", size_chart_table)
-        time.sleep(1)
-
-        # save the screenshot as image to the size_charts folder with the sku
-        if not os.path.exists("size_charts"):
-            os.makedirs("size_charts")
-        
-        image_filename = f"size_chart_{product_sku}.png"
-        image_path = os.path.join("size_charts", image_filename)
-        driver.save_screenshot(image_path)
-        size_chart_image_url=upload_image_to_imgbb(image_path)
-
+        # get brand from airtable table Filters by Name column value "Under Armour" and get that record id
+        brand_record_id = at.get("Filters", filter_by_formula="Name = 'Under Armour'")
+        # print(brand_record_id["records"][0]["id"])
+        brand_record_id = brand_record_id["records"][0]["id"]
+    except:
+        brand_record_id = ""
+    try:
+        # first we have to create a record in Filters table with Name column value "model_name" and get that record id
+        created_model_name = at.create("Filters", {"Name": model_name})
+        model_name_record_id = created_model_name["id"]
+    except:
+        model_name_record_id = ""
+    
+    
+    try:
+        image_filename = f"combined_size_chart.png"
+        # image is in current directory
+        image_path = os.path.join(os.getcwd(), image_filename)
+        try:
+            size_chart_image_url = upload_image_to_imgbb(image_path)
+        except Exception as e:
+            print(f"Error uploading size chart image: {e}")
+            size_chart_image_url = ""
     except:
         size_chart_image_url = ""
-    try:
-        size_chart_close_button = driver.find_element(By.XPATH, "(//div[@class='Dialog_dialog--ua-dialog--content__q_Y4K'])[1]//button[.='Close Dialog']")
-        size_chart_close_button.click()
-        time.sleep(1)
-    except:
-        pass
-    try:
-        sizes_available = driver.find_elements(By.XPATH, "//div[@class='SizeSwatchesSection_size-swatches__WT8Z_ false']//div[@data-testid='size-swatch'][.//input[@data-orderable='true']]//span[contains(@id, 'size-label')]")
-        # bonus_filter = join all the sizes available with a comma
-        bonus_filter = ", ".join([size.text.strip() for size in sizes_available])
-    except:
-        bonus_filter = ""
    
 
     scrape_update = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -300,21 +340,37 @@ def get_product_data(driver):
         "SEO Title Tag": product_name,
         "Product Brand or Title": "Under Armour",
         # "Model Name": model_name,
+         "Size Guide": [{
+            "url": size_chart_image_url,
+        }],
+        "Model Name":[model_name_record_id],
         "Color Name": color_name,
         "Price for Sorting": price_for_sorting,
         # "Fit": fit,
         "Percent Discount": percent_discount,
-        "Size Guide": [{
-            "url": size_chart_image_url,
-        }],
-        "Bonus/Filter 1": bonus_filter,
-        # "Filter Category/ies": filter_categories,
+        
         "Scraper Update": scrape_update,
+        "Brand":[brand_record_id]
 
 
     }
-    Products_tab_data.append(data)
-    return Products_tab_data
+    
+    # Add SKU references
+    if sku_record_ids:
+        data["SKUs"] = sku_record_ids
+    if filter_category_ids:
+        data["Filter Category/ies"] = filter_category_ids
+    try:
+        sizes_available = driver.find_elements(By.XPATH, "//div[@class='SizeSwatchesSection_size-swatches__WT8Z_ false']//div[@data-testid='size-swatch'][.//input[@data-orderable='true']]//span[contains(@id, 'size-label')]")
+        sizes_list = [size.text.strip() for size in sizes_available]
+
+        for idx, size in enumerate(sizes_list[:30]):
+            data[f"Bonus/Filter {idx + 1}"] = size
+    except Exception as e:
+        print(f"[⚠] Error generating bonus filters: {e}")
+    
+    
+    return data
     
 
 def get_SKUS_data(driver):
@@ -331,53 +387,80 @@ def get_SKUS_data(driver):
         name_of_product = ""
     try:
         main_image_url = driver.find_element(By.XPATH, "(//div[@class='ProductImages_pdpImages__wK1mQ']//img)[1]").get_attribute("src")
+        if not main_image_url:
+            main_image_url = ""
     except:
         main_image_url = ""
     try:
         # get except the first image
         more_images_url = driver.find_elements(By.XPATH, "//div[@class='ProductImages_pdpImages__wK1mQ']//img")[1:]
-        more_images_url = [image.get_attribute("src") for image in more_images_url]
+        more_images_url = [image.get_attribute("src") for image in more_images_url if image.get_attribute("src")]
     except:
-        more_images_url = ""
+        more_images_url = []
+    
+    # If main_image_url is empty, use the first image from more_images_url
+    if not main_image_url and more_images_url:
+        main_image_url = more_images_url[0]
+        more_images_url = more_images_url[1:]  # Remove the first image from more_images since it's now the main image
+        print(f"[ℹ] Using first image from more_images as main image: {main_image_url}")
+    elif not main_image_url:
+        print("[⚠] No main image found and no additional images available")
+    else:
+        print(f"[ℹ] Using original main image: {main_image_url}")
+    
     try:
         price_text=driver.find_element(By.XPATH, "(//span[@class='bfx-price bfx-list-price'])[2]").text.strip()
+        price_text = price_text.replace("$", "")
     except :
         price_text = ""
     try:
         # first $ comes price is like $89
         price_number = price_text.split("$")[1].strip()
+        price_number = int(price_number)
     except:
         price_number = 0
     try:
-        sizes_available = driver.find_elements(By.XPATH, "//div[@class='SizeSwatchesSection_size-swatches__WT8Z_ false']//div[@data-testid='size-swatch'][.//input[@data-orderable='true']]//span[contains(@id, 'size-label')]")
-        # bonus_filter = join all the sizes available with a comma
-        sizes= ", ".join([size.text.strip() for size in sizes_available])
-    except:
-        sizes= ""
+        all_sizes_elements = driver.find_elements(By.XPATH, "//div[@class='SizeSwatchesSection_size-swatches__WT8Z_ false']//div[@data-testid='size-swatch']//span[contains(@id, 'size-label')]")
+        available_sizes_elements = driver.find_elements(By.XPATH, "//div[@class='SizeSwatchesSection_size-swatches__WT8Z_ false']//div[@data-testid='size-swatch'][.//input[@data-orderable='true']]//span[contains(@id, 'size-label')]")
     
+        all_sizes = [el.text.strip() for el in all_sizes_elements]
+        available_sizes = [el.text.strip() for el in available_sizes_elements]
+    
+        sizes_dict = {size: 1 if size in available_sizes else 0 for size in all_sizes}
+        sizes_text = json.dumps(sizes_dict)
+    except:
+        sizes_text = ""
+    
+    try:
+        product_sku = driver.current_url.split("/")[-1].split(".")[0]
+    except:
+        product_sku = ""
 
 
     
         
     data={
         "Name": name_of_product,
-        "Main Image": [{
-            "url": main_image_url,
-        }],
-        "More Images": [{
-            "url": url,
-        } for url in more_images_url],
         "Price (Text)": price_text,
-        "Price (Number)": int(price_number),
+        "Price (Number)": price_number,
         "Price (Currency)": 0,
-        "Sizes": sizes,
+        "Sizes": sizes_text,
+        "SKU Values (Text)": product_sku,
+        "SKU/Product ID": product_sku
 
     }
-    SKUS_tab_data.append(data)
+    
+    # Only add Main Image if there's a valid URL
+    if main_image_url:
+        data["Main Image"] = [{"url": main_image_url}]
+    
+    # Only add More Images if there are additional images
+    if more_images_url:
+        data["More Images"] = [{"url": url} for url in more_images_url]
+    
+    return [data]
 
-    return SKUS_tab_data
-
-def get_imported_reviews(driver):
+def get_imported_reviews(driver, product_record_id):
     time.sleep(2)
     dialog_button = driver.find_element(By.XPATH, "(//button[contains(@class,'Dialog_close-button__LzXL1')])[5]")
     try:
@@ -385,23 +468,12 @@ def get_imported_reviews(driver):
         time.sleep(1)
     except (StaleElementReferenceException, ElementNotInteractableException, ElementClickInterceptedException):
         pass 
-    try:
-        h1_element = driver.find_element(By.XPATH, "//h1[contains(@class, 'VariantDetailsEnhancedBuyPanel_productNameWording__')]")
-        full_text = h1_element.text.strip()
-        product_name = full_text.split('\n')[0].strip()  # Get only the first line
     
-    except:
-        product_name =""
-    try:
-        product_name_with_sku = product_name + " " + driver.current_url.split("/")[-1].split(".")[0]
-    except:
-        product_name_with_sku = ""
-    try:
-        records = at.get("Products", filter_by_formula=f"{{Name}} = '{product_name_with_sku}'")
-        product_record_id = records["records"][0]["id"]
-        print(product_record_id)
-    except:
-        product_record_id = None
+    # Use the passed product_record_id instead of trying to find it
+    if not product_record_id:
+        print("No product record ID provided, skipping reviews")
+        return []
+        
     try:
         reviews_accordion_expand_button = driver.find_element(By.XPATH, "(//div[@class='Accordion_accordion--heading__Qzk_d ua-accordion-heading '])[5]")
         driver.execute_script("arguments[0].scrollIntoView(true);", reviews_accordion_expand_button)
@@ -436,6 +508,8 @@ def get_imported_reviews(driver):
         review_titles = driver.find_elements(By.XPATH, "//div[@class='Reviews_reviews__6YQse Reviews_full__r5YAF']//div[@class='ReviewCard_text-wrapper__EWy86']")
         review_comments = driver.find_elements(By.XPATH, "//div[@class='Reviews_reviews__6YQse Reviews_full__r5YAF']//div[@class='ReviewCard_review-card__XhxXV']//div[contains(@style,'--line-clamp: 3;')]//p")
         review_frames = driver.find_elements(By.XPATH, "//div[@class='Reviews_reviews__6YQse Reviews_full__r5YAF']//div[@class='ReviewCard_review-card__XhxXV']")
+        
+        reviews_data = []
         for review_person in review_frames:
             person_name_text = person_names[review_frames.index(review_person)].text.strip()
             date_reviewed = date_revieweds[review_frames.index(review_person)].text.strip()
@@ -472,9 +546,10 @@ def get_imported_reviews(driver):
             except:
                 rating = 0
             try:
-                img_urls = review_person.find_elements(By.XPATH, ".//img").get_attribute("src")
+                img_urls = review_person.find_elements(By.XPATH, ".//img")
+                img_urls = [img.get_attribute("src") for img in img_urls]
             except:
-                img_urls = ""
+                img_urls = []
                     
                     
             data ={
@@ -484,44 +559,41 @@ def get_imported_reviews(driver):
                 "Review Title": review_title,
                 "Review Comment": review_comment,
                 "Rating": rating,
-                "Review Image(s)": [{
-                    "url": img_url,
-                } for img_url in img_urls]
             }
-            Imported_reviews_tab_data.append(data)
+            
+            # Only add Review Image(s) if there are valid image URLs
+            if img_urls:
+                data["Review Image(s)"] = [{"url": img_url} for img_url in img_urls]
+            
+            reviews_data.append(data)
                 
     except Exception as e:
         print(f"Error getting imported reviews: {e}")
+        reviews_data = []
     
         
-    return Imported_reviews_tab_data
+    return reviews_data
         
 
 
 if __name__ == "__main__":
-    # read links from product_links.txt if it exists
+    # Load product links from file
     if os.path.exists("product_links.txt"):
         with open("product_links.txt", "r") as file:
             links = [line.strip() for line in file.readlines()]
+    else:
+        print("No product_links.txt file found.")
+        links = []
 
-    Products_tab_data = []
-    SKUS_tab_data = []
-    Imported_reviews_tab_data = []
-    # read the last 5 records from airtable "Products" table
-    # last_5_records = at.get(table_name="Products", max_records=5)
-    # print(last_5_records)
-    SKUS_data,Products_data,Imported_reviews_data = scrape_data(links)
-    print(SKUS_data)
-    print(Products_data)
-    print(Imported_reviews_data)
-    # insert the Products data into airtable "Products" table
+    if links:
+        scrape_data(links)
+    else:
+        print("No links to process.")
 
-    for data in Products_data:
-        at.create(table_name="Products", data=data)
-    for data in SKUS_data:
-        at.create(table_name="SKUs", data=data)
-    for data in Imported_reviews_data:
-        at.create(table_name="Imported Reviews", data=data)
+    driver.quit()
+    
+   
+    
  
     
     
