@@ -2,6 +2,7 @@ import base64
 import json
 import time
 from dotenv import load_dotenv
+import pytz
 import requests
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -23,7 +24,9 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.proxy import Proxy, ProxyType
 from PIL import Image
 from datetime import datetime
+import random
 import airtable
+import re
 
 
 load_dotenv()
@@ -44,8 +47,8 @@ chrome_options.add_argument('--disable-dev-shm-usage')
 chrome_options.add_argument('--start-maximized')
 chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36')
 chrome_options.add_argument('--ignore-certificate-errors')
-chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-chrome_options.add_argument('--headless=new')
+# chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+# chrome_options.add_argument('--headless=new')
 chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
 # chrome_options.add_argument(f'--proxy-server={proxy_ip}')
 # chrome_options.add_argument('--window-size=1920,1080')
@@ -91,7 +94,6 @@ def get_links():
             pass
 
         while True:
-            # Collect product links
             time.sleep(5)
             product_links = driver.find_elements(By.XPATH, "//div[contains(@class, 'ProductGrid_product-listing')]//a[contains(@class, 'ProductTile_product-image-link')]")
             for link in product_links:
@@ -113,6 +115,7 @@ def get_links():
             except Exception as e:
                 print("Error clicking next:", e)
                 break
+            
 
     except Exception as e:
         print("Error loading page:", e)
@@ -121,7 +124,8 @@ def get_links():
     return links
  
 def scrape_data(links):
-    for link in links:
+    # scrape last link
+    for link in links[23:24]:
         driver.get(link)
         time.sleep(5)
 
@@ -167,30 +171,39 @@ def get_product_data(driver, sku_record_ids):
         h1_element = driver.find_element(By.XPATH, "//h1[contains(@class, 'VariantDetailsEnhancedBuyPanel_productNameWording__')]")
         full_text = h1_element.text.strip()
         product_name = full_text.split('\n')[0].strip()  # Get only the first line
+        color_name = driver.find_element(By.XPATH, "//legend//span[@aria-hidden='true']").text.strip()
+        # split color name by - and get the first part and color id in the 1 index
+        color_name_split = color_name.split(" - ")
+        color_name = color_name_split[0]
+        color_id = color_name_split[1]
+        sku = driver.current_url.split("/")[-1].split(".")[0] + "-" + color_id
+        name_of_product = f"{product_name} {sku}"
+        name_of_product = name_of_product.replace("UA", "Under Armour",1)
     
     except:
-        product_name =""
+        name_of_product =""
+        color_name =""
     try:
         breadcrumb_elements = driver.find_elements(By.XPATH, "//nav[@aria-label='Breadcrumb']//a")
         breadcrumb_texts = [el.text.strip() for el in breadcrumb_elements]
     except:
         breadcrumb_texts = []
     category_keywords = {
-    "men": "Men's Shoes",
-    "women": "Women's Shoes",
-    "unisex": "Unisex Shoes"
+     r"\bwomen\b":  "Women's Shoes",
+    r"\bmen\b":    "Men's Shoes",
+    r"\bunisex\b": "Unisex Shoes",
     }
     matched_categories = set()
     for text in breadcrumb_texts:
         lowered = text.lower()
         for keyword, category in category_keywords.items():
-            if keyword in lowered:
+            if re.search(keyword, lowered):
                 matched_categories.add(category)
     filter_category_ids = []
     for category in matched_categories:
         try:
         # Escape single quote for Airtable formula by using double quotes
-            escaped_value = category.replace('"', '\\"')
+            escaped_value = category.replace('"', '\"')
             formula = f'{{Name}} = "{escaped_value}"'
             print(f"[ℹ] Fetching category '{category}' with formula: {formula}")
             result = at.get("Services & Collections", filter_by_formula=formula)
@@ -214,16 +227,12 @@ def get_product_data(driver, sku_record_ids):
     except:
         new_release = False
     # sku can be found in the URL https://www.underarmour.com/en-us/p/sportswear/ua_phantom_4_mens_shoes/3027593.html?dwvar_3027593_color=925 here 3027593 is the sku
-    try:
-        product_sku = driver.current_url.split("/")[-1].split(".")[0]
-    except:
-        product_sku = ""
 
     try:
         try:
             # it doesnt exists till we scrall down a bit
-            driver.execute_script("window.scrollBy(0, 800);")
-            time.sleep(2)
+            driver.execute_script("window.scrollBy(0, 700);")
+            time.sleep(4)
             # try the xpath //div[contains(@class,'AnimationWrapper_animate-section__PujEV AnimationWrapper_fade__LEwLx AnimationWrapper_from-left__NKLLZ AnimationWrapper_is-visible__XfavV')]
             description1 = driver.find_element(By.XPATH, "//div[contains(@class,'AnimationWrapper_animate-section__PujEV AnimationWrapper_fade__LEwLx AnimationWrapper_from-left__NKLLZ AnimationWrapper_is-visible__XfavV')]").text.strip()
 
@@ -255,25 +264,15 @@ def get_product_data(driver, sku_record_ids):
         description2_html = f"{heading_html}\n{details_html}"
 
     # Combine
-        product_description = f"{description1_html}\n{description2_html}"
+        product_description = f"{description1_html}{description2_html}"
 
     except :
         product_description = ""
-
-    try:
-        product_name_with_sku = product_name + " " + driver.current_url.split("/")[-1].split(".")[0]
-    except:
-        product_name_with_sku = ""
     try:
         # model name can be found in product_name without the first word that is UA 
         model_name = product_name.split(" ", 1)[-1] if " " in product_name else product_name
     except:
         model_name = ""
-    try:
-        color_name = driver.find_element(By.XPATH, "//legend//span[@aria-hidden='true']").text.strip()
-        color_name = color_name.split(" - ")[0]
-    except:
-        color_name = ""
     try:
         price_for_sorting=driver.find_element(By.XPATH, "(//span[@class='bfx-price bfx-list-price'])[2]").text.strip()
         # price for sorting is like $120 we need just 120 and in number
@@ -296,6 +295,18 @@ def get_product_data(driver, sku_record_ids):
         fit = ""
     try:
         percent_discount = driver.find_element(By.XPATH, "//div[contains(@class,'PriceDisplay_alternative-sale-text__9WawT')]").text.strip()
+        # it comes as $35 off so we need to get the number and calculate the percentage
+        percent_discount = percent_discount.split(" ")[0]
+        percent_discount = percent_discount.split("$")[1].strip()
+        percent_discount = float(percent_discount)
+        # get the price of the product
+        price_of_product = driver.find_element(By.XPATH, "(//span[@class='bfx-price bfx-list-price'])[2]").text.strip()
+        price_of_product = price_of_product.split("$")[1].strip()
+        price_of_product = int(price_of_product)
+        # calculate the percentage
+        percent_discount = (percent_discount / price_of_product) * 100
+        percent_discount = round(percent_discount, 2)
+        percent_discount = f"{percent_discount}%"
     except:
         percent_discount ="0%"
     try:
@@ -313,8 +324,12 @@ def get_product_data(driver, sku_record_ids):
         model_name_record_id = ""
     
     
+    # Select size chart image based on gender
     try:
-        image_filename = f"combined_size_chart.png"
+        if any('women' in cat.lower() for cat in matched_categories):
+            image_filename = "women_combined_size_chart.png"
+        else:
+            image_filename = "combined_size_chart.png"
         # image is in current directory
         image_path = os.path.join(os.getcwd(), image_filename)
         try:
@@ -325,19 +340,19 @@ def get_product_data(driver, sku_record_ids):
     except:
         size_chart_image_url = ""
    
-
-    scrape_update = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    #  Pacific Time
+    scrape_update = datetime.now(pytz.timezone('America/Los_Angeles')).strftime("%Y-%m-%d %H:%M:%S")
 
     data={
-        "Name": product_name_with_sku,
+        "Name": name_of_product,
         "Source URL": product_source_url,
         "Coming Soon": product_coming_soon,
         "New Release": new_release,
         "Excluded from Discounts": exclude_from_discount,
-        "SKU/Product ID": product_sku,
+        "SKU/Product ID": sku,
         "Description": description,
         "Product Description": product_description,
-        "SEO Title Tag": product_name,
+        "SEO Title Tag": "Under Armour " + model_name,
         "Product Brand or Title": "Under Armour",
         # "Model Name": model_name,
          "Size Guide": [{
@@ -366,9 +381,14 @@ def get_product_data(driver, sku_record_ids):
 
         for idx, size in enumerate(sizes_list[:30]):
             data[f"Bonus/Filter {idx + 1}"] = size
+        bonus_filter_idx = len(sizes_list)
     except Exception as e:
         print(f"[⚠] Error generating bonus filters: {e}")
-    
+        bonus_filter_idx = 0
+
+    # If (4E) is in the product name, add '4E' to a Bonus/Filter
+    if "(4E)" in name_of_product:
+        data[f"Bonus/Filter {bonus_filter_idx + 1}"] = "4E"
     
     return data
     
@@ -380,8 +400,13 @@ def get_SKUS_data(driver):
         full_text = h1_element.text.strip()
         product_name = full_text.split('\n')[0].strip()  # Get only the first line
         color_name = driver.find_element(By.XPATH, "//legend//span[@aria-hidden='true']").text.strip()
-        sku = driver.current_url.split("/")[-1].split(".")[0]
-        name_of_product = f"{product_name} {color_name} {sku}"
+        # split color name by - and get the first part and color id in the 1 index
+        color_name_split = color_name.split(" - ")
+        color_name = color_name_split[0]
+        color_id = color_name_split[1]
+        sku = driver.current_url.split("/")[-1].split(".")[0] + "-" + color_id
+        name_of_product = f"{product_name} {sku}"
+        name_of_product = name_of_product.replace("UA", "Under Armour",1)
     
     except:
         name_of_product = ""
@@ -397,28 +422,37 @@ def get_SKUS_data(driver):
         more_images_url = [image.get_attribute("src") for image in more_images_url if image.get_attribute("src")]
     except:
         more_images_url = []
-    
+    invalid_main_image = (
+    not main_image_url or
+    main_image_url.startswith("data:image/gif") or
+    main_image_url.strip() == ""
+    )
     # If main_image_url is empty, use the first image from more_images_url
-    if not main_image_url and more_images_url:
+    if invalid_main_image and more_images_url:
         main_image_url = more_images_url[0]
         more_images_url = more_images_url[1:]  # Remove the first image from more_images since it's now the main image
-        print(f"[ℹ] Using first image from more_images as main image: {main_image_url}")
-    elif not main_image_url:
-        print("[⚠] No main image found and no additional images available")
+        print(f"[ℹ] Replaced invalid main image with first more image: {main_image_url}")
+    elif invalid_main_image:
+        print("[⚠] Main image is invalid and no more images found")
     else:
         print(f"[ℹ] Using original main image: {main_image_url}")
     
     try:
-        price_text=driver.find_element(By.XPATH, "(//span[@class='bfx-price bfx-list-price'])[2]").text.strip()
-        price_text = price_text.replace("$", "")
+        list_price = driver.find_element(By.XPATH, "(//span[@class='bfx-price bfx-list-price'])[2]").text.strip()
+        price_text = list_price.replace("$", "")
+        
     except :
         price_text = ""
     try:
-        # first $ comes price is like $89
-        price_number = price_text.split("$")[1].strip()
-        price_number = int(price_number)
+        sale_price = driver.find_element(By.XPATH, "(//span[@data-testid='price-display-sales-price'])[2]").text.strip()
+        price_number = int(float(sale_price.replace("$", "")))
     except:
-        price_number = 0
+    # If no discounted price, fallback to list price
+        try:
+            price_number = int(float(price_text))
+        except:
+            price_number = 0
+
     try:
         all_sizes_elements = driver.find_elements(By.XPATH, "//div[@class='SizeSwatchesSection_size-swatches__WT8Z_ false']//div[@data-testid='size-swatch']//span[contains(@id, 'size-label')]")
         available_sizes_elements = driver.find_elements(By.XPATH, "//div[@class='SizeSwatchesSection_size-swatches__WT8Z_ false']//div[@data-testid='size-swatch'][.//input[@data-orderable='true']]//span[contains(@id, 'size-label')]")
@@ -431,10 +465,6 @@ def get_SKUS_data(driver):
     except:
         sizes_text = ""
     
-    try:
-        product_sku = driver.current_url.split("/")[-1].split(".")[0]
-    except:
-        product_sku = ""
 
 
     
@@ -445,8 +475,8 @@ def get_SKUS_data(driver):
         "Price (Number)": price_number,
         "Price (Currency)": 0,
         "Sizes": sizes_text,
-        "SKU Values (Text)": product_sku,
-        "SKU/Product ID": product_sku
+        "SKU Values (Text)": sku,
+        "SKU/Product ID": sku
 
     }
     
@@ -461,12 +491,12 @@ def get_SKUS_data(driver):
     return [data]
 
 def get_imported_reviews(driver, product_record_id):
-    time.sleep(2)
-    dialog_button = driver.find_element(By.XPATH, "(//button[contains(@class,'Dialog_close-button__LzXL1')])[5]")
     try:
+        time.sleep(2)
+        dialog_button = driver.find_element(By.XPATH, "(//button[contains(@class,'Dialog_close-button__LzXL1')])[5]")
         dialog_button.click()
         time.sleep(1)
-    except (StaleElementReferenceException, ElementNotInteractableException, ElementClickInterceptedException):
+    except (StaleElementReferenceException, ElementNotInteractableException, ElementClickInterceptedException, NoSuchElementException):
         pass 
     
     # Use the passed product_record_id instead of trying to find it
@@ -511,7 +541,11 @@ def get_imported_reviews(driver, product_record_id):
         
         reviews_data = []
         for review_person in review_frames:
-            person_name_text = person_names[review_frames.index(review_person)].text.strip()
+            
+            raw_name = person_names[review_frames.index(review_person)].text.strip()
+            if not raw_name:
+                raw_name = f"User{random.randint(10000, 99999)}"
+            person_name_text = raw_name
             date_reviewed = date_revieweds[review_frames.index(review_person)].text.strip()
             review_title = review_titles[review_frames.index(review_person)].text.strip()
             review_comment = review_comments[review_frames.index(review_person)].text.strip()
