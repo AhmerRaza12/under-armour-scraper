@@ -51,8 +51,8 @@ chrome_options.add_argument('--ignore-certificate-errors')
 # chrome_options.add_argument('--headless=new')
 chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
 # chrome_options.add_argument(f'--proxy-server={proxy_ip}')
-# chrome_options.add_argument('--window-size=1920,1080')
-# chrome_options.add_argument("--headless=new")
+chrome_options.add_argument('--window-size=1920,1080')
+chrome_options.add_argument("--headless=new")
 chrome_install = ChromeDriverManager().install()
 folder = os.path.dirname(chrome_install)
 chromedriver_path = os.path.join(folder, "chromedriver.exe")
@@ -125,7 +125,7 @@ def get_links():
  
 def scrape_data(links):
     # scrape last link
-    for link in links[23:24]:
+    for link in links:
         driver.get(link)
         time.sleep(5)
 
