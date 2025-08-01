@@ -1,6 +1,7 @@
 import base64
 import json
 import time
+import sys
 from dotenv import load_dotenv
 import pytz
 import requests
@@ -38,7 +39,7 @@ at = airtable.Airtable(AIRTABLE_BASE_ID, AIRTABLE_API_KEY)
 
 # Initialize data lists
 Products_tab_data = []
-SKUS_tab_data = []
+SKUs_tab_data = []
 Imported_reviews_tab_data = []
 
 chrome_options = Options()
@@ -77,8 +78,34 @@ def upload_image_to_imgbb(image_path):
     return response.json()["data"]["url"]
 
 
+def get_already_scraped_links():
+    """Get list of already scraped product links"""
+    already_scraped = set()
+    try:
+        if os.path.exists("scraped_product_links.txt"):
+            with open("scraped_product_links.txt", "r") as file:
+                already_scraped = {line.strip() for line in file.readlines() if line.strip()}
+            print(f"[ℹ] Found {len(already_scraped)} already scraped products")
+        else:
+            print("[ℹ] No scraped_product_links.txt found, will create new file")
+    except Exception as e:
+        print(f"[⚠] Error reading scraped_product_links.txt: {e}")
+    
+    return already_scraped
+
+def save_scraped_link(url):
+    """Save a newly scraped link to the file"""
+    try:
+        with open("scraped_product_links.txt", "a") as file:
+            file.write(url + "\n")
+        print(f"[💾] Saved {url} to scraped_product_links.txt")
+    except Exception as e:
+        print(f"[⚠] Error saving link to file: {e}")
+
 def get_links():
     links = []
+    already_scraped = get_already_scraped_links()
+    
     try:
         driver.get("https://www.underarmour.com/en-us/c/shoes/mens%2Bwomens%2Badult_unisex-sneakers%2Bboots/?srule=top-sellers")
         time.sleep(5)
@@ -100,6 +127,10 @@ def get_links():
                 try:
                     href = link.get_attribute("href")
                     if href and href not in links:
+                        # Check if this product has already been scraped
+                        if href in already_scraped:
+                            print(f"[⏭️] Skipping already scraped product: {href}")
+                            continue
                         links.append(href)
                 except Exception as e:
                     print("Error getting link:", e)
@@ -121,6 +152,7 @@ def get_links():
         print("Error loading page:", e)
         return []
 
+    print(f"[📊] Found {len(links)} new products to scrape")
     return links
  
 def scrape_data(links):
@@ -151,7 +183,11 @@ def scrape_data(links):
             # Extract and upload Reviews with linked Product ID
             imported_reviews_data = get_imported_reviews(driver, product_record_id)
             for review in imported_reviews_data:
-                at.create("Imported Reviews", review)
+                at.create("Customer Reviews", review)
+
+            # Save successfully scraped link to file
+            save_scraped_link(link)
+            print(f"[✅] Successfully scraped and saved: {link}")
 
         except Exception as e:
             print(f"[✘] Error processing {link}: {e}")
@@ -300,7 +336,7 @@ def get_product_data(driver, sku_record_ids):
         percent_discount = percent_discount.split("$")[1].strip()
         percent_discount = float(percent_discount)
         # get the price of the product
-        price_of_product = driver.find_element(By.XPATH, "(//span[@class='bfx-price bfx-list-price'])[2]").text.strip()
+        price_of_product = driver.find_element(By.XPATH, "(//span[@class='bfx-list-price'])[2]").text.strip()
         price_of_product = price_of_product.split("$")[1].strip()
         price_of_product = int(price_of_product)
         # calculate the percentage
@@ -471,6 +507,7 @@ def get_SKUS_data(driver):
         
     data={
         "Name": name_of_product,
+        "Products": name_of_product,  # Added Products column with product name
         "Price (Text)": price_text,
         "Price (Number)": price_number,
         "Price (Currency)": 0,
@@ -611,16 +648,24 @@ def get_imported_reviews(driver, product_record_id):
 
 
 if __name__ == "__main__":
-    # Load product links from file
-    if os.path.exists("product_links.txt"):
-        with open("product_links.txt", "r") as file:
-            links = [line.strip() for line in file.readlines()]
+    # Check if we should scrape new products or use existing links
+    if len(sys.argv) > 1 and sys.argv[1] == "--existing":
+        # Use existing links from scraped_product_links.txt for testing/updates
+        if os.path.exists("scraped_product_links.txt"):
+            with open("scraped_product_links.txt", "r") as file:
+                links = [line.strip() for line in file.readlines() if line.strip()]
+            print(f"[ℹ] Using {len(links)} existing links from scraped_product_links.txt")
+        else:
+            print("No scraped_product_links.txt file found.")
+            links = []
     else:
-        print("No product_links.txt file found.")
-        links = []
+        # Scrape new products from the website
+        print("[🔄] Starting to scrape new products from Under Armour website...")
+        links = get_links()
 
     if links:
         scrape_data(links)
+        print(f"[🎉] Completed processing {len(links)} products")
     else:
         print("No links to process.")
 
