@@ -53,10 +53,10 @@ def setup_driver():
     chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
     chrome_options.add_argument('--window-size=1920,1080')
     
-    # For Heroku, we need to use the buildpack Chrome
+    # For Heroku, we need to use the Chrome for Testing buildpack
     chrome_options.binary_location = os.environ.get('GOOGLE_CHROME_BIN', '/usr/bin/google-chrome')
     
-    service = ChromeService(executable_path=os.environ.get('CHROMEDRIVER_PATH', '/app/.chromedriver/bin/chromedriver'))
+    service = ChromeService(executable_path=os.environ.get('CHROMEDRIVER_PATH', '/usr/bin/chromedriver'))
     
     return webdriver.Chrome(service=service, options=chrome_options)
 

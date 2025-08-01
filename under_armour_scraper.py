@@ -54,10 +54,18 @@ chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
 # chrome_options.add_argument(f'--proxy-server={proxy_ip}')
 chrome_options.add_argument('--window-size=1920,1080')
 chrome_options.add_argument("--headless=new")
-chrome_install = ChromeDriverManager().install()
-folder = os.path.dirname(chrome_install)
-chromedriver_path = os.path.join(folder, "chromedriver.exe")
-service = ChromeService(executable_path=chromedriver_path, log_path='NUL')
+
+# Check if we're on Heroku
+if os.environ.get('DYNO'):
+    # Use Chrome for Testing buildpack on Heroku
+    chrome_options.binary_location = os.environ.get('GOOGLE_CHROME_BIN', '/usr/bin/google-chrome')
+    service = ChromeService(executable_path=os.environ.get('CHROMEDRIVER_PATH', '/usr/bin/chromedriver'))
+else:
+    # Use local ChromeDriver for development
+    chrome_install = ChromeDriverManager().install()
+    folder = os.path.dirname(chrome_install)
+    chromedriver_path = os.path.join(folder, "chromedriver.exe")
+    service = ChromeService(executable_path=chromedriver_path, log_path='NUL')
 
 
 

@@ -40,8 +40,7 @@ heroku create your-app-name
 2. Add buildpacks:
 ```bash
 heroku buildpacks:add heroku/python
-heroku buildpacks:add https://github.com/heroku/heroku-buildpack-google-chrome
-heroku buildpacks:add https://github.com/heroku/heroku-buildpack-chromedriver
+heroku buildpacks:add https://github.com/heroku/heroku-buildpack-chrome-for-testing
 ```
 
 3. Add the Scheduler add-on:

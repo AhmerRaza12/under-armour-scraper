@@ -15,8 +15,7 @@ heroku create $APP_NAME
 
 echo "🔧 Adding buildpacks..."
 heroku buildpacks:add heroku/python --app $APP_NAME
-heroku buildpacks:add https://github.com/heroku/heroku-buildpack-google-chrome --app $APP_NAME
-heroku buildpacks:add https://github.com/heroku/heroku-buildpack-chromedriver --app $APP_NAME
+heroku buildpacks:add https://github.com/heroku/heroku-buildpack-chrome-for-testing --app $APP_NAME
 
 echo "📅 Adding Scheduler add-on..."
 heroku addons:create scheduler:standard --app $APP_NAME
