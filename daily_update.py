@@ -55,8 +55,10 @@ def setup_driver():
     
     # Chrome driver setup for Heroku with multiple path options
     if os.environ.get('DYNO'):
-        # Try different Chrome paths that might exist on Heroku
+        # Chrome for Testing buildpack paths
         possible_chrome_paths = [
+            '/app/.chrome-for-testing/chrome-linux64/chrome',
+            '/app/.chrome-for-testing/chrome-linux64/google-chrome',
             '/usr/bin/google-chrome',
             '/usr/bin/google-chrome-stable',
             '/app/.apt/usr/bin/google-chrome',
@@ -64,6 +66,7 @@ def setup_driver():
         ]
         
         possible_chromedriver_paths = [
+            '/app/.chrome-for-testing/chromedriver-linux64/chromedriver',
             '/usr/bin/chromedriver',
             '/app/.apt/usr/bin/chromedriver',
             '/usr/local/bin/chromedriver'
@@ -85,8 +88,10 @@ def setup_driver():
         
         if chrome_binary:
             chrome_options.binary_location = chrome_binary
+            logger.info(f"Using Chrome binary: {chrome_binary}")
         if chromedriver_path:
             service = ChromeService(executable_path=chromedriver_path)
+            logger.info(f"Using ChromeDriver: {chromedriver_path}")
         else:
             # Fallback to webdriver_manager if no chromedriver found
             chrome_install = ChromeDriverManager().install()
