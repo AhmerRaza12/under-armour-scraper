@@ -67,6 +67,45 @@ else:
     chromedriver_path = os.path.join(folder, "chromedriver.exe")
     service = ChromeService(executable_path=chromedriver_path, log_path='NUL')
 
+# Alternative Chrome paths for Heroku Chrome for Testing buildpack
+if os.environ.get('DYNO'):
+    # Try different Chrome paths that might exist on Heroku
+    possible_chrome_paths = [
+        '/usr/bin/google-chrome',
+        '/usr/bin/google-chrome-stable',
+        '/app/.apt/usr/bin/google-chrome',
+        '/app/.apt/usr/bin/google-chrome-stable'
+    ]
+    
+    possible_chromedriver_paths = [
+        '/usr/bin/chromedriver',
+        '/app/.apt/usr/bin/chromedriver',
+        '/usr/local/bin/chromedriver'
+    ]
+    
+    # Find Chrome binary
+    chrome_binary = None
+    for path in possible_chrome_paths:
+        if os.path.exists(path):
+            chrome_binary = path
+            break
+    
+    # Find ChromeDriver
+    chromedriver_path = None
+    for path in possible_chromedriver_paths:
+        if os.path.exists(path):
+            chromedriver_path = path
+            break
+    
+    if chrome_binary:
+        chrome_options.binary_location = chrome_binary
+    if chromedriver_path:
+        service = ChromeService(executable_path=chromedriver_path)
+    else:
+        # Fallback to webdriver_manager if no chromedriver found
+        chrome_install = ChromeDriverManager().install()
+        service = ChromeService(executable_path=chrome_install)
+
 
 
 driver = webdriver.Chrome(service=service, options=chrome_options)

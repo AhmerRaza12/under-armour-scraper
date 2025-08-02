@@ -53,10 +53,48 @@ def setup_driver():
     chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
     chrome_options.add_argument('--window-size=1920,1080')
     
-    # For Heroku, we need to use the Chrome for Testing buildpack
-    chrome_options.binary_location = os.environ.get('GOOGLE_CHROME_BIN', '/usr/bin/google-chrome')
-    
-    service = ChromeService(executable_path=os.environ.get('CHROMEDRIVER_PATH', '/usr/bin/chromedriver'))
+    # Chrome driver setup for Heroku with multiple path options
+    if os.environ.get('DYNO'):
+        # Try different Chrome paths that might exist on Heroku
+        possible_chrome_paths = [
+            '/usr/bin/google-chrome',
+            '/usr/bin/google-chrome-stable',
+            '/app/.apt/usr/bin/google-chrome',
+            '/app/.apt/usr/bin/google-chrome-stable'
+        ]
+        
+        possible_chromedriver_paths = [
+            '/usr/bin/chromedriver',
+            '/app/.apt/usr/bin/chromedriver',
+            '/usr/local/bin/chromedriver'
+        ]
+        
+        # Find Chrome binary
+        chrome_binary = None
+        for path in possible_chrome_paths:
+            if os.path.exists(path):
+                chrome_binary = path
+                break
+        
+        # Find ChromeDriver
+        chromedriver_path = None
+        for path in possible_chromedriver_paths:
+            if os.path.exists(path):
+                chromedriver_path = path
+                break
+        
+        if chrome_binary:
+            chrome_options.binary_location = chrome_binary
+        if chromedriver_path:
+            service = ChromeService(executable_path=chromedriver_path)
+        else:
+            # Fallback to webdriver_manager if no chromedriver found
+            chrome_install = ChromeDriverManager().install()
+            service = ChromeService(executable_path=chrome_install)
+    else:
+        # Local development
+        chrome_install = ChromeDriverManager().install()
+        service = ChromeService(executable_path=chrome_install)
     
     return webdriver.Chrome(service=service, options=chrome_options)
 
