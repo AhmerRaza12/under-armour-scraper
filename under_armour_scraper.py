@@ -228,6 +228,12 @@ def scrape_data(links):
 
             # Extract and upload Product data with SKU references
             product_data = get_product_data(driver, sku_record_ids)
+            
+            # Debug: Print the data structure being sent to Airtable
+            print(f"[🔍] Product data structure:")
+            for key, value in product_data.items():
+                print(f"  {key}: {type(value)} = {value}")
+            
             created_product = at.create("Products", product_data)
             product_record_id = created_product["id"]
             print(f"[✔] Created Product: {product_data.get('Name')} → ID: {product_record_id}")
@@ -399,16 +405,24 @@ def get_product_data(driver, sku_record_ids):
         percent_discount ="0%"
     try:
         # get brand from airtable table Filters by Name column value "Under Armour" and get that record id
-        brand_record_id = at.get("Filters", filter_by_formula="Name = 'Under Armour'")
-        # print(brand_record_id["records"][0]["id"])
-        brand_record_id = brand_record_id["records"][0]["id"]
-    except:
+        brand_result = at.get("Filters", filter_by_formula="Name = 'Under Armour'")
+        if brand_result["records"]:
+            brand_record_id = brand_result["records"][0]["id"]
+        else:
+            brand_record_id = ""
+    except Exception as e:
+        print(f"[⚠] Error fetching brand: {e}")
         brand_record_id = ""
+    
     try:
         # first we have to create a record in Filters table with Name column value "model_name" and get that record id
-        created_model_name = at.create("Filters", {"Name": model_name})
-        model_name_record_id = created_model_name["id"]
-    except:
+        if model_name:
+            created_model_name = at.create("Filters", {"Name": model_name})
+            model_name_record_id = created_model_name["id"]
+        else:
+            model_name_record_id = ""
+    except Exception as e:
+        print(f"[⚠] Error creating model name filter: {e}")
         model_name_record_id = ""
     
     
@@ -442,21 +456,21 @@ def get_product_data(driver, sku_record_ids):
         "Product Description": product_description,
         "SEO Title Tag": "Under Armour " + model_name,
         "Product Brand or Title": "Under Armour",
-        # "Model Name": model_name,
-         "Size Guide": [{
-            "url": size_chart_image_url,
-        }],
-        "Model Name":[model_name_record_id],
         "Color Name": color_name,
         "Price for Sorting": price_for_sorting,
-        # "Fit": fit,
         "Percent Discount": percent_discount,
-        
         "Scraper Update": scrape_update,
-        "Brand":[brand_record_id]
-
-
     }
+    
+    # Only add linked fields if we have valid record IDs
+    if size_chart_image_url:
+        data["Size Guide"] = [{"url": size_chart_image_url}]
+    
+    if model_name_record_id:
+        data["Model Name"] = [model_name_record_id]
+    
+    if brand_record_id:
+        data["Brand"] = [brand_record_id]
     
     # Add SKU references
     if sku_record_ids:
