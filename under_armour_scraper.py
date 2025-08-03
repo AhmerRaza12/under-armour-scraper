@@ -586,7 +586,6 @@ def get_SKUS_data(driver):
         
     data={
         "Name": name_of_product,
-        "Price (Text)": price_text,
         "Price (Number)": price_number,
         "Price (Currency)": 0,
         "Sizes": sizes_text,

@@ -240,7 +240,6 @@ def get_updated_sku_data(driver):
             sizes_text = ""
         
         return {
-            "Price (Text)": price_text,
             "Price (Number)": price_number,
             "Sizes": sizes_text
         }
