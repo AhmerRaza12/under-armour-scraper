@@ -270,19 +270,56 @@ def update_sku_in_airtable(sku_record_id, sku_data):
         return False
 
 def get_existing_products():
-    """Get existing products from Airtable"""
+    """Get ALL existing products from Airtable"""
     try:
-        products = at.get("Products")
-        return products["records"]
+        all_products = []
+        offset = None
+        
+        while True:
+            if offset:
+                products = at.get("Products", offset=offset)
+            else:
+                products = at.get("Products")
+            
+            all_products.extend(products["records"])
+            
+            # Check if there are more records
+            if "offset" in products:
+                offset = products["offset"]
+            else:
+                break
+        
+        logger.info(f"Retrieved {len(all_products)} products from Airtable")
+        return all_products
+        
     except Exception as e:
         logger.error(f"Error getting existing products: {e}")
         return []
 
 def find_product_by_url(products, url):
-    """Find product record by source URL"""
+    """Find product record by source URL with flexible matching"""
+    # Normalize the search URL
+    search_url = url.rstrip('/')
+    
     for product in products:
-        if product.get("fields", {}).get("Source URL") == url:
-            return product
+        product_url = product.get("fields", {}).get("Source URL", "")
+        if product_url:
+            # Normalize the product URL
+            normalized_product_url = product_url.rstrip('/')
+            
+            # Try exact match first
+            if normalized_product_url == search_url:
+                return product
+            
+            # Try matching by product ID (last part of URL)
+            try:
+                search_id = search_url.split('/')[-1].split('.')[0]
+                product_id = normalized_product_url.split('/')[-1].split('.')[0]
+                if search_id == product_id:
+                    return product
+            except:
+                pass
+    
     return None
 
 def main():

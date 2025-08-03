@@ -26,9 +26,27 @@ def debug_urls():
     
     # Get URLs from Airtable
     try:
-        products = at.get("Products")
+        all_products = []
+        offset = None
+        
+        while True:
+            if offset:
+                products = at.get("Products", offset=offset)
+            else:
+                products = at.get("Products")
+            
+            all_products.extend(products["records"])
+            
+            # Check if there are more records
+            if "offset" in products:
+                offset = products["offset"]
+            else:
+                break
+        
+        print(f"📊 Total products in Airtable: {len(all_products)}")
+        
         airtable_urls = []
-        for product in products["records"]:
+        for product in all_products:
             source_url = product.get("fields", {}).get("Source URL", "")
             if source_url:
                 airtable_urls.append({
