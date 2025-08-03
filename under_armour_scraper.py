@@ -214,11 +214,15 @@ def scrape_data(links):
         time.sleep(5)
 
         try:
-            # Extract and upload SKUs first
+            # Extract and upload SKUs first (without Products column)
             skus_data = get_SKUS_data(driver)
             sku_record_ids = []
             if skus_data:
                 for sku in skus_data:
+                    # Remove the Products column from SKU data (we'll update it later)
+                    if "Products" in sku:
+                        del sku["Products"]
+                    
                     created_sku = at.create("SKUs", sku)
                     sku_record_id = created_sku["id"]
                     sku_record_ids.append(sku_record_id)
@@ -237,6 +241,15 @@ def scrape_data(links):
             created_product = at.create("Products", product_data)
             product_record_id = created_product["id"]
             print(f"[✔] Created Product: {product_data.get('Name')} → ID: {product_record_id}")
+
+            # Now update SKUs with the correct Products column (record ID)
+            if sku_record_ids:
+                for sku_record_id in sku_record_ids:
+                    try:
+                        at.update("SKUs", sku_record_id, {"Products": [product_record_id]})
+                        print(f"[🔗] Updated SKU {sku_record_id} with Product {product_record_id}")
+                    except Exception as e:
+                        print(f"[⚠] Error updating SKU {sku_record_id}: {e}")
 
             # Extract and upload Reviews with linked Product ID
             imported_reviews_data = get_imported_reviews(driver, product_record_id)
@@ -573,7 +586,6 @@ def get_SKUS_data(driver):
         
     data={
         "Name": name_of_product,
-        "Products": name_of_product,  # Added Products column with product name
         "Price (Text)": price_text,
         "Price (Number)": price_number,
         "Price (Currency)": 0,
