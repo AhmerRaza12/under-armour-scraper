@@ -527,7 +527,7 @@ def get_product_data(driver, sku_record_ids):
             size_chart_image_url = ""
     except:
         size_chart_image_url = ""
-   
+    print("Size chart image url", size_chart_image_url)
     #  Pacific Time
     scrape_update = datetime.now(pytz.timezone('America/Los_Angeles')).strftime("%Y-%m-%d %H:%M:%S")
 
