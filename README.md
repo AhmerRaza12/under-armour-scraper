@@ -112,8 +112,8 @@ heroku ps:scale worker=1
 ### SKUs Table
 - Name
 - Products (product name)
-- Price (Text)
-- Price (Number)
+- MSRP
+- Actual Price
 - Price (Currency)
 - Sizes
 - SKU Values (Text)
@@ -144,8 +144,8 @@ The system automatically updates the following fields daily at 1am Pacific Time:
 - Scraper Update
 
 ### SKUs Table:
-- Price (Text)
-- Price (Number)
+- MSRP
+- Actual Price
 - Sizes
 
 ## Usage

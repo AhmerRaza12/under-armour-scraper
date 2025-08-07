@@ -209,22 +209,22 @@ def get_updated_product_data(driver):
 def get_updated_sku_data(driver):
     """Get updated SKU fields"""
     try:
-        # Price (Text)
+        # MSRP
         try:
             list_price = driver.find_element(By.XPATH, "(//span[@class='bfx-price bfx-list-price'])[2]").text.strip()
-            price_text = list_price.replace("$", "")
+            msrp = list_price.replace("$", "")
         except:
-            price_text = ""
+            msrp = ""
         
-        # Price (Number)
+        # Actual Price
         try:
             sale_price = driver.find_element(By.XPATH, "(//span[@data-testid='price-display-sales-price'])[2]").text.strip()
-            price_number = int(float(sale_price.replace("$", "")))
+            actual_price = int(float(sale_price.replace("$", "")))
         except:
             try:
-                price_number = int(float(price_text))
+                actual_price = int(float(msrp))
             except:
-                price_number = 0
+                actual_price = 0
         
         # Sizes
         try:
@@ -240,7 +240,7 @@ def get_updated_sku_data(driver):
             sizes_text = ""
         
         return {
-            "Price (Number)": price_number,
+            "Actual Price": actual_price,
             "Sizes": sizes_text
         }
         

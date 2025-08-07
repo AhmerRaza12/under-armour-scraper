@@ -554,19 +554,19 @@ def get_SKUS_data(driver):
     
     try:
         list_price = driver.find_element(By.XPATH, "(//span[@class='bfx-price bfx-list-price'])[2]").text.strip()
-        price_text = list_price.replace("$", "")
+        msrp = list_price.replace("$", "")
         
     except :
-        price_text = ""
+        msrp = ""
     try:
         sale_price = driver.find_element(By.XPATH, "(//span[@data-testid='price-display-sales-price'])[2]").text.strip()
-        price_number = int(float(sale_price.replace("$", "")))
+        actual_price = int(float(sale_price.replace("$", "")))
     except:
     # If no discounted price, fallback to list price
         try:
-            price_number = int(float(price_text))
+            actual_price = int(float(msrp))
         except:
-            price_number = 0
+            actual_price = 0
 
     try:
         all_sizes_elements = driver.find_elements(By.XPATH, "//div[@class='SizeSwatchesSection_size-swatches__WT8Z_ false']//div[@data-testid='size-swatch']//span[contains(@id, 'size-label')]")
@@ -586,7 +586,8 @@ def get_SKUS_data(driver):
         
     data={
         "Name": name_of_product,
-        "Price (Number)": price_number,
+        "MSRP": msrp,
+        "Actual Price": actual_price,
         "Price (Currency)": 0,
         "Sizes": sizes_text,
         "SKU Values (Text)": sku,
