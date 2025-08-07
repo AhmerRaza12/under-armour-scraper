@@ -706,21 +706,28 @@ def get_imported_reviews(driver, product_record_id):
         time.sleep(1)
         all_reviews_button.click()
         time.sleep(1)
-        while True:
+        show_more_count = 0
+        max_show_more_clicks = 3  # Maximum 3 "Show More" clicks
+        
+        while show_more_count < max_show_more_clicks:
             try:
                 show_more_button = driver.find_element(By.XPATH, "//button[contains(text(),'Show More')]")
                 if show_more_button:
-                    print("show more button found")
+                    print(f"show more button found (click {show_more_count + 1}/{max_show_more_clicks})")
                     driver.execute_script("arguments[0].scrollIntoView(true);", show_more_button)
                     time.sleep(2)
                     show_more_button.click()
                     time.sleep(1)
+                    show_more_count += 1
                 else:
-                    print("all reviews loaded")
+                    print("no more show more button found")
                     break
             except:
                 print("no show more button found")
                 break
+        
+        if show_more_count >= max_show_more_clicks:
+            print(f"Reached maximum {max_show_more_clicks} 'Show More' clicks, moving to next product")
         person_names = driver.find_elements(By.XPATH, "//div[@class='Reviews_reviews__6YQse Reviews_full__r5YAF']//div[@class='ReviewCard_review-card__XhxXV']//div[@class='ReviewCard_frame__xdRaA']//div[contains(@class,'ReviewCard_div__frJBZ')][1]")
         date_revieweds = driver.find_elements(By.XPATH, "//div[@class='Reviews_reviews__6YQse Reviews_full__r5YAF']//div[@class='ReviewCard_review-card__XhxXV']//div[@class='ReviewCard_frame__xdRaA']//div[contains(@class,'ReviewCard_div__frJBZ')][2]")
         review_titles = driver.find_elements(By.XPATH, "//div[@class='Reviews_reviews__6YQse Reviews_full__r5YAF']//div[@class='ReviewCard_text-wrapper__EWy86']")
