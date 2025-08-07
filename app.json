@@ -1,37 +1,31 @@
 {
   "name": "under-armour-scraper",
-  "description": "Under Armour product scraper with daily updates",
+  "description": "Under Armour product scraper with Airtable integration",
   "repository": "https://github.com/yourusername/under-armour-scraper",
-  "keywords": ["python", "scraper", "selenium", "airtable"],
-  "buildpacks": [
-    {
-      "url": "heroku/python"
-    },
-    {
-      "url": "https://github.com/heroku/heroku-buildpack-chrome-for-testing"
-    }
-  ],
-  "addons": [
-    "scheduler:standard"
-  ],
+  "keywords": ["python", "selenium", "scraper", "airtable"],
   "env": {
     "AIRTABLE_BASE": {
-      "description": "Airtable Base ID",
+      "description": "Your Airtable Base ID",
       "required": true
     },
     "AIRTABLE_TOKEN": {
-      "description": "Airtable API Token",
+      "description": "Your Airtable API Token",
       "required": true
     },
     "IMGBB_API_KEY": {
-      "description": "ImgBB API Key",
+      "description": "Your ImgBB API Key",
       "required": true
     }
   },
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ],
   "formation": {
-    "worker": {
-      "quantity": 1,
-      "size": "basic"
+    "web": {
+      "quantity": 0,
+      "size": "free"
     }
   }
 } 

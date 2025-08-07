@@ -55,6 +55,29 @@ chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
 chrome_options.add_argument('--window-size=1920,1080')
 chrome_options.add_argument("--headless=new")
 
+# Memory optimization options
+chrome_options.add_argument('--disable-gpu')
+chrome_options.add_argument('--disable-software-rasterizer')
+chrome_options.add_argument('--disable-extensions')
+chrome_options.add_argument('--disable-plugins')
+chrome_options.add_argument('--disable-images')  # Disable images to save memory
+chrome_options.add_argument('--memory-pressure-off')
+chrome_options.add_argument('--max_old_space_size=100')  # Free tier memory limit
+chrome_options.add_argument('--single-process')  # Use single process to reduce memory
+chrome_options.add_argument('--disable-background-timer-throttling')
+chrome_options.add_argument('--disable-backgrounding-occluded-windows')
+chrome_options.add_argument('--disable-renderer-backgrounding')
+chrome_options.add_argument('--disable-web-security')
+chrome_options.add_argument('--disable-features=VizDisplayCompositor')
+chrome_options.add_argument('--disable-ipc-flooding-protection')
+chrome_options.add_argument('--no-zygote')
+chrome_options.add_argument('--disable-setuid-sandbox')
+chrome_options.add_argument('--disable-accelerated-2d-canvas')
+chrome_options.add_argument('--disable-accelerated-jpeg-decoding')
+chrome_options.add_argument('--disable-accelerated-mjpeg-decode')
+chrome_options.add_argument('--disable-accelerated-video-decode')
+chrome_options.add_argument('--disable-accelerated-video-encode')
+
 # Check if we're on Heroku
 if os.environ.get('DYNO'):
     # Use Chrome for Testing buildpack on Heroku
@@ -129,6 +152,18 @@ def upload_image_to_imgbb(image_path):
     response = requests.post(url, data=payload)
     return response.json()["data"]["url"]
 
+
+def log_memory_usage():
+    """Log current memory usage for monitoring"""
+    try:
+        import psutil
+        process = psutil.Process()
+        memory_mb = process.memory_info().rss / 1024 / 1024
+        print(f"[📊] Current memory usage: {memory_mb:.1f} MB")
+        return memory_mb
+    except:
+        print("[📊] Memory monitoring not available")
+        return 0
 
 def get_already_scraped_links():
     """Get list of already scraped product links"""
@@ -209,11 +244,14 @@ def get_links():
  
 def scrape_data(links):
     # scrape last link
-    for link in links:
-        driver.get(link)
-        time.sleep(5)
-
+    for i, link in enumerate(links, 1):
+        print(f"[🔄] Processing {i}/{len(links)}: {link}")
+        log_memory_usage()  # Monitor memory before each product
+        
         try:
+            driver.get(link)
+            time.sleep(5)
+
             # Extract and upload SKUs first (without Products column)
             skus_data = get_SKUS_data(driver)
             sku_record_ids = []
@@ -230,6 +268,12 @@ def scrape_data(links):
             else:
                 print("[⚠] No SKUs data found")
 
+            # Clear memory after SKU processing
+            driver.delete_all_cookies()
+            driver.execute_script("window.localStorage.clear();")
+            driver.execute_script("window.sessionStorage.clear();")
+            driver.execute_script("if (window.performance && window.performance.memory) { window.performance.memory.usedJSHeapSize = 0; }")
+
             # Extract and upload Product data with SKU references
             product_data = get_product_data(driver, sku_record_ids)
             
@@ -241,6 +285,12 @@ def scrape_data(links):
             created_product = at.create("Products", product_data)
             product_record_id = created_product["id"]
             print(f"[✔] Created Product: {product_data.get('Name')} → ID: {product_record_id}")
+
+            # Clear memory after product processing
+            driver.delete_all_cookies()
+            driver.execute_script("window.localStorage.clear();")
+            driver.execute_script("window.sessionStorage.clear();")
+            driver.execute_script("if (window.performance && window.performance.memory) { window.performance.memory.usedJSHeapSize = 0; }")
 
             # Now update SKUs with the correct Products column (record ID)
             if sku_record_ids:
@@ -260,8 +310,31 @@ def scrape_data(links):
             save_scraped_link(link)
             print(f"[✅] Successfully scraped and saved: {link}")
 
+            # Aggressive memory cleanup after each product
+            print(f"[🧹] Clearing memory after product {i}")
+            driver.delete_all_cookies()
+            driver.execute_script("window.localStorage.clear();")
+            driver.execute_script("window.sessionStorage.clear();")
+            driver.execute_script("if (window.performance && window.performance.memory) { window.performance.memory.usedJSHeapSize = 0; }")
+            
+            # Force garbage collection
+            import gc
+            gc.collect()
+            
+            # Small delay to let memory clear
+            time.sleep(3)
+
         except Exception as e:
             print(f"[✘] Error processing {link}: {e}")
+            # Clean up even on error
+            try:
+                driver.delete_all_cookies()
+                driver.execute_script("window.localStorage.clear();")
+                driver.execute_script("window.sessionStorage.clear();")
+                import gc
+                gc.collect()
+            except:
+                pass
             continue
 
 
