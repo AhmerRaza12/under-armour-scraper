@@ -726,26 +726,40 @@ def get_imported_reviews(driver, product_record_id):
 
 
 if __name__ == "__main__":
-    # Check if we should scrape new products or use existing links
-    if len(sys.argv) > 1 and sys.argv[1] == "--existing":
-        # Use existing links from scraped_product_links.txt for testing/updates
-        if os.path.exists("scraped_product_links.txt"):
-            with open("scraped_product_links.txt", "r") as file:
-                links = [line.strip() for line in file.readlines() if line.strip()]
-            print(f"[ℹ] Using {len(links)} existing links from scraped_product_links.txt")
+    # Read URLs from product_links.txt and filter out already scraped ones
+    print("[🔄] Reading product URLs from product_links.txt...")
+    
+    # Get already scraped links
+    already_scraped = get_already_scraped_links()
+    
+    # Read all URLs from product_links.txt
+    links = []
+    try:
+        if os.path.exists("product_links.txt"):
+            with open("product_links.txt", "r") as file:
+                all_urls = [line.strip() for line in file.readlines() if line.strip()]
+            
+            # Filter out already scraped URLs
+            for url in all_urls:
+                if url not in already_scraped:
+                    links.append(url)
+                else:
+                    print(f"[⏭️] Skipping already scraped product: {url}")
+            
+            print(f"[📊] Found {len(all_urls)} total URLs in product_links.txt")
+            print(f"[📊] {len(already_scraped)} already scraped, {len(links)} new to process")
         else:
-            print("No scraped_product_links.txt file found.")
+            print("[⚠] No product_links.txt file found.")
             links = []
-    else:
-        # Scrape new products from the website
-        print("[🔄] Starting to scrape new products from Under Armour website...")
-        links = get_links()
+    except Exception as e:
+        print(f"[⚠] Error reading product_links.txt: {e}")
+        links = []
 
     if links:
         scrape_data(links)
         print(f"[🎉] Completed processing {len(links)} products")
     else:
-        print("No links to process.")
+        print("No new links to process.")
 
     driver.quit()
     
