@@ -707,7 +707,7 @@ def get_imported_reviews(driver, product_record_id):
         all_reviews_button.click()
         time.sleep(1)
         show_more_count = 0
-        max_show_more_clicks = 3  # Maximum 3 "Show More" clicks
+        max_show_more_clicks = 9  # Maximum 9 "Show More" clicks to get ~100 reviews
         
         while show_more_count < max_show_more_clicks:
             try:
@@ -727,7 +727,7 @@ def get_imported_reviews(driver, product_record_id):
                 break
         
         if show_more_count >= max_show_more_clicks:
-            print(f"Reached maximum {max_show_more_clicks} 'Show More' clicks, moving to next product")
+            print(f"Reached maximum {max_show_more_clicks} 'Show More' clicks (~100 reviews), moving to next product")
         person_names = driver.find_elements(By.XPATH, "//div[@class='Reviews_reviews__6YQse Reviews_full__r5YAF']//div[@class='ReviewCard_review-card__XhxXV']//div[@class='ReviewCard_frame__xdRaA']//div[contains(@class,'ReviewCard_div__frJBZ')][1]")
         date_revieweds = driver.find_elements(By.XPATH, "//div[@class='Reviews_reviews__6YQse Reviews_full__r5YAF']//div[@class='ReviewCard_review-card__XhxXV']//div[@class='ReviewCard_frame__xdRaA']//div[contains(@class,'ReviewCard_div__frJBZ')][2]")
         review_titles = driver.find_elements(By.XPATH, "//div[@class='Reviews_reviews__6YQse Reviews_full__r5YAF']//div[@class='ReviewCard_text-wrapper__EWy86']")
