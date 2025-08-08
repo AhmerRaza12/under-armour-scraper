@@ -40,6 +40,18 @@ AIRTABLE_API_KEY = os.getenv("AIRTABLE_TOKEN")
 IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
 at = airtable.Airtable(AIRTABLE_BASE_ID, AIRTABLE_API_KEY)
 
+def log_memory_usage():
+    """Log current memory usage for monitoring"""
+    try:
+        import psutil
+        process = psutil.Process()
+        memory_mb = process.memory_info().rss / 1024 / 1024
+        logger.info(f"[📊] Current memory usage: {memory_mb:.1f} MB")
+        return memory_mb
+    except:
+        logger.info("[📊] Memory monitoring not available")
+        return 0
+
 def setup_driver():
     """Setup Chrome driver for Heroku"""
     chrome_options = Options()
@@ -52,6 +64,24 @@ def setup_driver():
     chrome_options.add_argument('--ignore-certificate-errors')
     chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
     chrome_options.add_argument('--window-size=1920,1080')
+    
+    # Memory optimization options
+    chrome_options.add_argument('--disable-software-rasterizer')
+    chrome_options.add_argument('--disable-extensions')
+    chrome_options.add_argument('--disable-plugins')
+    chrome_options.add_argument('--disable-images')  # Disable images to save memory
+    chrome_options.add_argument('--memory-pressure-off')
+    chrome_options.add_argument('--max_old_space_size=100')  # Free tier memory limit
+    chrome_options.add_argument('--single-process')  # Use single process to reduce memory
+    chrome_options.add_argument('--disable-background-timer-throttling')
+    chrome_options.add_argument('--disable-backgrounding-occluded-windows')
+    chrome_options.add_argument('--disable-renderer-backgrounding')
+    chrome_options.add_argument('--disable-features=TranslateUI')
+    chrome_options.add_argument('--disable-ipc-flooding-protection')
+    chrome_options.add_argument('--aggressive-cache-discard')
+    chrome_options.add_argument('--memory-pressure-thresholds=50,75,90')
+    chrome_options.add_argument('--disable-web-security')
+    chrome_options.add_argument('--disable-features=VizDisplayCompositor')
     
     # Chrome driver setup for Heroku with multiple path options
     if os.environ.get('DYNO'):
@@ -124,6 +154,13 @@ def get_product_updates(driver, product_url):
         # Get product data
         product_data = get_updated_product_data(driver)
         sku_data = get_updated_sku_data(driver)
+        
+        # Clean up memory after data extraction
+        driver.delete_all_cookies()
+        driver.execute_script("window.localStorage.clear();")
+        driver.execute_script("window.sessionStorage.clear();")
+        import gc
+        gc.collect()
         
         return product_data, sku_data
         
@@ -344,8 +381,9 @@ def main():
     driver = setup_driver()
     
     try:
-        for url in product_urls:
-            logger.info(f"Processing: {url}")
+        for i, url in enumerate(product_urls, 1):
+            logger.info(f"Processing {i}/{len(product_urls)}: {url}")
+            log_memory_usage()  # Monitor memory before each product
             
             # Find existing product record
             product_record = find_product_by_url(existing_products, url)
@@ -369,8 +407,17 @@ def main():
                 except Exception as e:
                     logger.error(f"Error updating SKUs for product {product_record['id']}: {e}")
             
-            # Sleep between requests to be respectful
-            time.sleep(2)
+            # Aggressive memory cleanup after each product
+            logger.info(f"[🧹] Clearing memory after product {i}")
+            driver.delete_all_cookies()
+            driver.execute_script("window.localStorage.clear();")
+            driver.execute_script("window.sessionStorage.clear();")
+            driver.execute_script("if (window.performance && window.performance.memory) { window.performance.memory.usedJSHeapSize = 0; }")
+            import gc
+            gc.collect()
+            
+            # Sleep between requests to be respectful and let memory clear
+            time.sleep(3)
     
     finally:
         driver.quit()
