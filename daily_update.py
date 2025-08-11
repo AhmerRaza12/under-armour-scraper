@@ -207,12 +207,25 @@ def get_updated_product_data(driver):
         
         # Bonus/Filter 1-30 (sizes)
         bonus_filters = {}
+        sizes_list = []
+        
         try:
+            # Try first XPath pattern
             sizes_available = driver.find_elements(By.XPATH, "//div[@class='SizeSwatchesSection_size-swatches__WT8Z_ false']//div[@data-testid='size-swatch'][.//input[@data-orderable='true']]//span[contains(@id, 'size-label')]")
-            sizes_list = [size.text.strip() for size in sizes_available]
             
-            for idx, size in enumerate(sizes_list[:30]):
-                bonus_filters[f"Bonus/Filter {idx + 1}"] = size
+            if not sizes_available:
+                # Try second XPath pattern as fallback
+                logger.info("[🔄] First XPath didn't work, trying second pattern...")
+                sizes_available = driver.find_elements(By.XPATH, "(//div[@class='SizeSwatchesSection_size-swatches__WT8Z_ SizeSwatchesSection_size-swatches-two-column__r6Bw_'])[2]//div[@data-testid='size-swatch'][.//input[@data-orderable='true']]//span[contains(@id,'size-label')]")
+            
+            if sizes_available:
+                sizes_list = [size.text.strip() for size in sizes_available]
+                logger.info(f"[✅] Found {len(sizes_list)} sizes using {'second' if 'SizeSwatchesSection_size-swatches-two-column__r6Bw_' in str(sizes_available[0].find_element(By.XPATH, '..').get_attribute('class')) else 'first'} XPath pattern")
+                
+                for idx, size in enumerate(sizes_list[:30]):
+                    bonus_filters[f"Bonus/Filter {idx + 1}"] = size
+            else:
+                logger.warning("[⚠️] No sizes found with either XPath pattern")
             
             # Check for 4E in product name
             try:
