@@ -220,7 +220,7 @@ def get_updated_product_data(driver):
             
             if sizes_available:
                 sizes_list = [size.text.strip() for size in sizes_available]
-                logger.info(f"[✅] Found {len(sizes_list)} sizes using {'second' if 'SizeSwatchesSection_size-swatches-two-column__r6Bw_' in str(sizes_available[0].find_element(By.XPATH, '..').get_attribute('class')) else 'first'} XPath pattern")
+                logger.info(f"[✅] Found {len(sizes_list)} sizes")
                 
                 for idx, size in enumerate(sizes_list[:30]):
                     bonus_filters[f"Bonus/Filter {idx + 1}"] = size
@@ -290,6 +290,7 @@ def get_updated_sku_data(driver):
             sizes_text = ""
         
         return {
+            "MSRP": msrp,
             "Actual Price": actual_price,
             "Sizes": sizes_text
         }
@@ -421,7 +422,7 @@ def main():
                     logger.error(f"Error updating SKUs for product {product_record['id']}: {e}")
             
             # Aggressive memory cleanup after each product
-            logger.info(f"[🧹] Clearing memory after product {i}")
+            # Memory cleanup completed
             driver.delete_all_cookies()
             driver.execute_script("window.localStorage.clear();")
             driver.execute_script("window.sessionStorage.clear();")

@@ -277,10 +277,7 @@ def scrape_data(links):
             # Extract and upload Product data with SKU references
             product_data = get_product_data(driver, sku_record_ids)
             
-            # Debug: Print the data structure being sent to Airtable
-            print(f"[🔍] Product data structure:")
-            for key, value in product_data.items():
-                print(f"  {key}: {type(value)} = {value}")
+
             
             created_product = at.create("Products", product_data)
             product_record_id = created_product["id"]
@@ -311,7 +308,7 @@ def scrape_data(links):
             print(f"[✅] Successfully scraped and saved: {link}")
 
             # Aggressive memory cleanup after each product
-            print(f"[🧹] Clearing memory after product {i}")
+            # Memory cleanup completed
             driver.delete_all_cookies()
             driver.execute_script("window.localStorage.clear();")
             driver.execute_script("window.sessionStorage.clear();")
@@ -358,7 +355,11 @@ def get_product_data(driver, sku_record_ids):
         color_id = color_name_split[1]
         sku = driver.current_url.split("/")[-1].split(".")[0] + "-" + color_id
         name_of_product = f"{product_name} {sku}"
-        name_of_product = name_of_product.replace("UA", "Under Armour",1)
+        # Replace UA with Under Armour if present, otherwise prepend Under Armour
+        if "UA" in name_of_product:
+            name_of_product = name_of_product.replace("UA", "Under Armour", 1)
+        elif "Under Armour" not in name_of_product:
+            name_of_product = f"Under Armour {name_of_product}"
     
     except:
         name_of_product =""
@@ -385,7 +386,6 @@ def get_product_data(driver, sku_record_ids):
         # Escape single quote for Airtable formula by using double quotes
             escaped_value = category.replace('"', '\"')
             formula = f'{{Name}} = "{escaped_value}"'
-            print(f"[ℹ] Fetching category '{category}' with formula: {formula}")
             result = at.get("Services & Collections", filter_by_formula=formula)
             if result["records"]:
                 filter_category_ids.append(result["records"][0]["id"])
@@ -416,9 +416,8 @@ def get_product_data(driver, sku_record_ids):
             # try the xpath //div[contains(@class,'AnimationWrapper_animate-section__PujEV AnimationWrapper_fade__LEwLx AnimationWrapper_from-left__NKLLZ AnimationWrapper_is-visible__XfavV')]
             description1 = driver.find_element(By.XPATH, "//div[contains(@class,'AnimationWrapper_animate-section__PujEV AnimationWrapper_fade__LEwLx AnimationWrapper_from-left__NKLLZ AnimationWrapper_is-visible__XfavV')]").text.strip()
 
-            print("Description 1 is not empty", description1)
+            # Description 1 found
         except:
-            print("Description 1 is empty")
             description1 = ""
         product_details_accordion_expand_button = driver.find_element(By.XPATH, "(//div[@class='Accordion_accordion--heading__Qzk_d ua-accordion-heading '])[2]")
         driver.execute_script("arguments[0].scrollIntoView(true);", product_details_accordion_expand_button)
@@ -527,7 +526,7 @@ def get_product_data(driver, sku_record_ids):
             size_chart_image_url = ""
     except:
         size_chart_image_url = ""
-    print("Size chart image url", size_chart_image_url)
+    
     #  Pacific Time
     scrape_update = datetime.now(pytz.timezone('America/Los_Angeles')).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -574,7 +573,7 @@ def get_product_data(driver, sku_record_ids):
         
         if sizes_available:
             sizes_list = [size.text.strip() for size in sizes_available]
-            print(f"[✅] Found {len(sizes_list)} sizes using {'second' if 'SizeSwatchesSection_size-swatches-two-column__r6Bw_' in str(sizes_available[0].find_element(By.XPATH, '..').get_attribute('class')) else 'first'} XPath pattern")
+            print(f"[✅] Found {len(sizes_list)} sizes")
             
             for idx, size in enumerate(sizes_list[:30]):
                 data[f"Bonus/Filter {idx + 1}"] = size
@@ -608,7 +607,11 @@ def get_SKUS_data(driver):
         color_id = color_name_split[1]
         sku = driver.current_url.split("/")[-1].split(".")[0] + "-" + color_id
         name_of_product = f"{product_name} {sku}"
-        name_of_product = name_of_product.replace("UA", "Under Armour",1)
+        # Replace UA with Under Armour if present, otherwise prepend Under Armour
+        if "UA" in name_of_product:
+            name_of_product = name_of_product.replace("UA", "Under Armour", 1)
+        elif "Under Armour" not in name_of_product:
+            name_of_product = f"Under Armour {name_of_product}"
     
     except:
         name_of_product = ""
@@ -633,11 +636,11 @@ def get_SKUS_data(driver):
     if invalid_main_image and more_images_url:
         main_image_url = more_images_url[0]
         more_images_url = more_images_url[1:]  # Remove the first image from more_images since it's now the main image
-        print(f"[ℹ] Replaced invalid main image with first more image: {main_image_url}")
+        # Using first more image as main image
     elif invalid_main_image:
-        print("[⚠] Main image is invalid and no more images found")
+        pass  # No valid images found
     else:
-        print(f"[ℹ] Using original main image: {main_image_url}")
+        pass  # Using original main image
     
     try:
         list_price = driver.find_element(By.XPATH, "(//span[@class='bfx-price bfx-list-price'])[2]").text.strip()
@@ -727,21 +730,19 @@ def get_imported_reviews(driver, product_record_id):
             try:
                 show_more_button = driver.find_element(By.XPATH, "//button[contains(text(),'Show More')]")
                 if show_more_button:
-                    print(f"show more button found (click {show_more_count + 1}/{max_show_more_clicks})")
                     driver.execute_script("arguments[0].scrollIntoView(true);", show_more_button)
                     time.sleep(2)
                     show_more_button.click()
                     time.sleep(1)
                     show_more_count += 1
                 else:
-                    print("no more show more button found")
                     break
             except:
-                print("no show more button found")
                 break
         
         if show_more_count >= max_show_more_clicks:
-            print(f"Reached maximum {max_show_more_clicks} 'Show More' clicks (~100 reviews), moving to next product")
+            pass  # Reached maximum show more clicks
+        
         person_names = driver.find_elements(By.XPATH, "//div[@class='Reviews_reviews__6YQse Reviews_full__r5YAF']//div[@class='ReviewCard_review-card__XhxXV']//div[@class='ReviewCard_frame__xdRaA']//div[contains(@class,'ReviewCard_div__frJBZ')][1]")
         date_revieweds = driver.find_elements(By.XPATH, "//div[@class='Reviews_reviews__6YQse Reviews_full__r5YAF']//div[@class='ReviewCard_review-card__XhxXV']//div[@class='ReviewCard_frame__xdRaA']//div[contains(@class,'ReviewCard_div__frJBZ')][2]")
         review_titles = driver.find_elements(By.XPATH, "//div[@class='Reviews_reviews__6YQse Reviews_full__r5YAF']//div[@class='ReviewCard_text-wrapper__EWy86']")
@@ -809,6 +810,8 @@ def get_imported_reviews(driver, product_record_id):
                 data["Review Image(s)"] = [{"url": img_url} for img_url in img_urls]
             
             reviews_data.append(data)
+        
+        print(f"[📝] Scraped {len(reviews_data)} reviews")
                 
     except Exception as e:
         print(f"Error getting imported reviews: {e}")
