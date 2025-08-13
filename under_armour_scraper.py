@@ -266,7 +266,8 @@ def scrape_data(links):
                     sku_record_ids.append(sku_record_id)
                     print(f"[✔] Created SKU: {sku.get('Name')} → ID: {sku_record_id}")
             else:
-                print("[⚠] No SKUs data found")
+                print("[⚠] No SKUs data found, skipping this product")
+                continue
 
             # Clear memory after SKU processing
             driver.delete_all_cookies()
@@ -338,12 +339,19 @@ def scrape_data(links):
 def get_product_data(driver, sku_record_ids):
     time.sleep(2)
     
+    # Initialize variables with default values
+    name_of_product = ""
+    color_name = ""
+    sku = ""
+    product_name = ""
+    
     try:
         dialog_button = driver.find_element(By.XPATH, "(//button[contains(@class,'Dialog_close-button__LzXL1')])[5]")
         dialog_button.click()
         time.sleep(1)
     except (StaleElementReferenceException, ElementNotInteractableException, ElementClickInterceptedException, NoSuchElementException):
         pass  # If the button is not interactable, we can skip it
+    
     try:
         h1_element = driver.find_element(By.XPATH, "//h1[contains(@class, 'VariantDetailsEnhancedBuyPanel_productNameWording__')]")
         full_text = h1_element.text.strip()
@@ -361,9 +369,9 @@ def get_product_data(driver, sku_record_ids):
         elif "Under Armour" not in name_of_product:
             name_of_product = f"Under Armour {name_of_product}"
     
-    except:
-        name_of_product =""
-        color_name =""
+    except Exception as e:
+        print(f"[⚠] Error extracting product name/color/SKU: {e}")
+        # Variables already initialized with default values above
     try:
         breadcrumb_elements = driver.find_elements(By.XPATH, "//nav[@aria-label='Breadcrumb']//a")
         breadcrumb_texts = [el.text.strip() for el in breadcrumb_elements]
@@ -596,6 +604,13 @@ def get_product_data(driver, sku_record_ids):
 
 def get_SKUS_data(driver):
     time.sleep(2)
+    
+    # Initialize variables with default values
+    name_of_product = ""
+    color_name = ""
+    sku = ""
+    product_name = ""
+    
     try:
         h1_element = driver.find_element(By.XPATH, "//h1[contains(@class, 'VariantDetailsEnhancedBuyPanel_productNameWording__')]")
         full_text = h1_element.text.strip()
@@ -613,8 +628,9 @@ def get_SKUS_data(driver):
         elif "Under Armour" not in name_of_product:
             name_of_product = f"Under Armour {name_of_product}"
     
-    except:
-        name_of_product = ""
+    except Exception as e:
+        print(f"[⚠] Error extracting SKU data: {e}")
+        # Variables already initialized with default values above
     try:
         main_image_url = driver.find_element(By.XPATH, "(//div[@class='ProductImages_pdpImages__wK1mQ']//img)[1]").get_attribute("src")
         if not main_image_url:
@@ -674,6 +690,11 @@ def get_SKUS_data(driver):
 
     
         
+    # Check if we have valid SKU data before proceeding
+    if not sku or not name_of_product:
+        print(f"[⚠] Missing SKU or product name data, skipping SKU creation")
+        return []
+    
     data={
         "Name": name_of_product,
         "MSRP": msrp,
